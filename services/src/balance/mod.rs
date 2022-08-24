@@ -12,6 +12,7 @@ struct PrimitiveBalance {
 pub struct Balance {
     pub free: usize,
     pub lock: usize,
+    pub coin: String,
     user_id: String,
     db: db::DB
 }
@@ -69,7 +70,7 @@ impl Balance {
     }
 
     fn commit(&mut self) {
-        self.db.set(&self.user_id, &PrimitiveBalance {
+        self.db.set(&format!("{}:{}", &self.user_id, &self.coin), &PrimitiveBalance {
             free: self.free,
             lock: self.lock
         });
@@ -89,41 +90,45 @@ impl BalanceRepository {
         };
         balances
     }
-    pub fn add(&mut self, user_id: &String) {
+    pub fn add(&mut self, user_id: &String, coin: &String) {
         let mut db = db::DB::new(&self.database_url);
+        let key = format!("{}:{}", user_id, coin);
         let primitive = PrimitiveBalance {
             free: 0,
             lock: 0,
         };
         // register this user in database
-        db.set::<PrimitiveBalance>(user_id, &primitive);
+        db.set::<PrimitiveBalance>(&key, &primitive);
         self.balances.insert(
-            String::from(user_id), 
+            String::from(&key), 
             Arc::new(Mutex::new(Balance {
                     user_id: String::from(user_id),
+                    coin: String::from(coin),
                     free: primitive.free,
                     lock: primitive.lock,
                     db
                 }))
         );
     }
-    pub fn get(&mut self, user_id: &String) -> Option<Arc<Mutex<Balance>>> {
-        if self.balances.contains_key(user_id) {
-            return Some(self.balances.get(user_id).unwrap().clone())
+    pub fn get(&mut self, user_id: &String, coin: &String) -> Option<Arc<Mutex<Balance>>> {
+        let key = format!("{}:{}", user_id, coin);
+        if self.balances.contains_key(&key) {
+            return Some(self.balances.get(&key).unwrap().clone())
         } else {
             let mut db = db::DB::new(&self.database_url);
-            match db.get::<PrimitiveBalance>(user_id) {
+            match db.get::<PrimitiveBalance>(&key) {
                 Some(user) => {
                     self.balances.insert(
-                        String::from(user_id), 
+                        String::from(&key), 
                         Arc::new(Mutex::new(Balance {
                                 user_id: String::from(user_id),
+                                coin: String::from(coin),
                                 free: user.free,
                                 lock: user.lock,
                                 db
                             }))
                     );
-                    return Some(self.balances.get(user_id).unwrap().clone())
+                    return Some(self.balances.get(&key).unwrap().clone())
                 },
                 _ => { None }
             }

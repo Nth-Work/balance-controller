@@ -2,6 +2,7 @@ use actix_web::{HttpServer, App, Responder, HttpResponse, get, post, web};
 use std::sync::{Arc, Mutex};
 use services::balance::BalanceRepository;
 use serde::{Serialize, Deserialize};
+use std::fmt::{Display, Formatter, Result};
 
 struct AppState {
     balances_repository: Arc<Mutex<BalanceRepository>>
@@ -16,10 +17,24 @@ struct BalanceResponse {
     lock: usize
 }
 
-#[get("/{user_id}")]
-async fn get_balance(data: web::Data<AppState>, user_id: web::Path<String>) -> impl Responder {
+#[derive(Serialize, Deserialize, Clone, Copy, Debug)]
+enum Coins {
+    USD,
+    BTC,
+    ETH
+}
+
+impl Display for Coins {
+        fn fmt(&self, f: &mut Formatter) -> Result {
+            write!(f, "{:?}", self)
+        }
+    }
+
+#[get("/{user_id}/{coin}")]
+async fn get_balance(data: web::Data<AppState>, path: web::Path<(String, Coins)>) -> impl Responder {
+    let (user_id, coin) = path.into_inner();
     let mut locked_repo = data.balances_repository.lock().unwrap();
-    let user = locked_repo.get(&user_id);
+    let user = locked_repo.get(&user_id, &coin.to_string());
     std::mem::drop(locked_repo);
     match user {
         Some(balance) => {
@@ -43,10 +58,10 @@ struct UpdateBalance {
     value: usize
 }
 
-#[post("/add")]
-async fn add_balance(data: web::Data<AppState>, form: web::Json<UpdateBalance>) -> impl Responder {
+#[post("/add/{coin}")]
+async fn add_balance(data: web::Data<AppState>, form: web::Json<UpdateBalance>, coin: web::Path<Coins>) -> impl Responder {
     let mut locked_repo = data.balances_repository.lock().unwrap();
-    let user = locked_repo.get(&form.user_id);
+    let user = locked_repo.get(&form.user_id, &coin.to_string());
     std::mem::drop(locked_repo);
     match user {
         Some(balance) => {
@@ -65,10 +80,10 @@ async fn add_balance(data: web::Data<AppState>, form: web::Json<UpdateBalance>) 
     }
 }
 
-#[post("/force_add")]
-async fn force_add_balance(data: web::Data<AppState>, form: web::Json<UpdateBalance>) -> impl Responder {
+#[post("/force_add/{coin}")]
+async fn force_add_balance(data: web::Data<AppState>, form: web::Json<UpdateBalance>, coin: web::Path<Coins>) -> impl Responder {
     let mut locked_repo = data.balances_repository.lock().unwrap();
-    let user = locked_repo.get(&form.user_id);
+    let user = locked_repo.get(&form.user_id, &coin.to_string());
     std::mem::drop(locked_repo);
     match user {
         Some(balance) => {
@@ -86,10 +101,10 @@ async fn force_add_balance(data: web::Data<AppState>, form: web::Json<UpdateBala
     }
 }
 
-#[post("/remove")]
-async fn remove_balance(data: web::Data<AppState>, form: web::Json<UpdateBalance>) -> impl Responder {
+#[post("/remove/{coin}")]
+async fn remove_balance(data: web::Data<AppState>, form: web::Json<UpdateBalance>, coin: web::Path<Coins>) -> impl Responder {
     let mut locked_repo = data.balances_repository.lock().unwrap();
-    let user = locked_repo.get(&form.user_id);
+    let user = locked_repo.get(&form.user_id, &coin.to_string());
     std::mem::drop(locked_repo);
     match user {
         Some(balance) => {
@@ -113,10 +128,10 @@ async fn remove_balance(data: web::Data<AppState>, form: web::Json<UpdateBalance
     }
 }
 
-#[post("/force_remove")]
-async fn force_remove_balance(data: web::Data<AppState>, form: web::Json<UpdateBalance>) -> impl Responder {
+#[post("/force_remove/{coin}")]
+async fn force_remove_balance(data: web::Data<AppState>, form: web::Json<UpdateBalance>, coin: web::Path<Coins>) -> impl Responder {
     let mut locked_repo = data.balances_repository.lock().unwrap();
-    let user = locked_repo.get(&form.user_id);
+    let user = locked_repo.get(&form.user_id, &coin.to_string());
     std::mem::drop(locked_repo);
     match user {
         Some(balance) => {
@@ -140,10 +155,10 @@ async fn force_remove_balance(data: web::Data<AppState>, form: web::Json<UpdateB
     }
 }
 
-#[post("/lock")]
-async fn lock_balance(data: web::Data<AppState>, form: web::Json<UpdateBalance>) -> impl Responder {
+#[post("/lock/{coin}")]
+async fn lock_balance(data: web::Data<AppState>, form: web::Json<UpdateBalance>, coin: web::Path<Coins>) -> impl Responder {
     let mut locked_repo = data.balances_repository.lock().unwrap();
-    let user = locked_repo.get(&form.user_id);
+    let user = locked_repo.get(&form.user_id, &coin.to_string());
     std::mem::drop(locked_repo);
     match user {
         Some(balance) => {
@@ -167,10 +182,10 @@ async fn lock_balance(data: web::Data<AppState>, form: web::Json<UpdateBalance>)
     }
 }
 
-#[post("/unlock")]
-async fn unlock_balance(data: web::Data<AppState>, form: web::Json<UpdateBalance>) -> impl Responder {
+#[post("/unlock/{coin}")]
+async fn unlock_balance(data: web::Data<AppState>, form: web::Json<UpdateBalance>, coin: web::Path<Coins>) -> impl Responder {
     let mut locked_repo = data.balances_repository.lock().unwrap();
-    let user = locked_repo.get(&form.user_id);
+    let user = locked_repo.get(&form.user_id, &coin.to_string());
     std::mem::drop(locked_repo);
     match user {
         Some(balance) => {
@@ -194,15 +209,15 @@ async fn unlock_balance(data: web::Data<AppState>, form: web::Json<UpdateBalance
     }
 }
 
-#[post("/add_user")]
-async fn add_user(data: web::Data<AppState>, form: web::Json<UpdateBalance>) -> impl Responder {
+#[post("/add_user/{coin}")]
+async fn add_user(data: web::Data<AppState>, form: web::Json<UpdateBalance>, coin: web::Path<Coins>) -> impl Responder {
     let mut locked_repo = data.balances_repository.lock().unwrap();
-    match locked_repo.get(&form.user_id) {
+    match locked_repo.get(&form.user_id, &coin.to_string()) {
         Some(_) => {
             HttpResponse::NotModified().body("User already knowed")
         },
         None => {
-            locked_repo.add(&form.user_id);
+            locked_repo.add(&form.user_id, &coin.to_string());
             HttpResponse::Ok().body("User added")
         }
     }
